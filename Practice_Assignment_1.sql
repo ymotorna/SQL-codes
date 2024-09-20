@@ -175,57 +175,44 @@ insert into store_2 (product_id, price, product_q) values
 -- --------------------
 
 
-with product_range as (
+with merged as (
+	select m.*,
+		sum(s.supply_unit_price*s.supply_q) as order_cost,
+		od.overdue_orders
+	from (
 		select sc.supplier_id,
 			count(s.product_id) as product_type_count
 		from supply s
 		left join supplier_contact_info sc
 		on s.order_id = sc.order_id
 		group by 1
-		order by product_type_count desc
-	),
-	
-	total_cost as (
-		select cc.supplier_id,
-			cc.product_type_count,
-			sum(cc.order_cost) as order_TC
-		from (
-			select pr.*,
-				s.supply_unit_price*s.supply_q as order_cost
-			from product_range pr
-			left join supplier_contact_info sc
-			on pr.supplier_id = sc.supplier_id
-			left join supply s
-			on s.order_id = sc.order_id) as cc
-		group by supplier_id
-	),
-	
-	overdue_order as (
+		) as m
+	left join supplier_contact_info sc
+	on m.supplier_id = sc.supplier_id
+	left join supply s
+	on s.order_id = sc.order_id
+	left join (
 		select sc.supplier_id,
 			sum(o.overdue_orders) as overdue_orders
 		from (
 			select s.order_id,
-					count(s.order_id) as overdue_orders
-				from supply s
-				where datediff(current_date(), s.order_date) > 182
-				group by 1) as o
+				count(s.order_id) as overdue_orders
+			from supply s
+			where datediff(current_date(), s.order_date) > 182
+			group by 1) as o
 		left join supplier_contact_info sc
 		on sc.order_id = o.order_id
-		group by supplier_id
-	),
+		group by 1
+	) as od
+	on m.supplier_id = od.supplier_id
+	group by m.supplier_id, od.overdue_orders
+	order by product_type_count desc
+)
 
-	merged as (
-		select tc.*,
-			coalesce(o.overdue_orders, 0) as overdue_orders
-		from overdue_order o
-		right join total_cost tc
-		on tc.supplier_id = o.supplier_id
-	)
 
 -- ------------------------
 	
 select * from merged
-
 
 
 
